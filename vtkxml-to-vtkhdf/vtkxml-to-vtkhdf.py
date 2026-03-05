@@ -501,10 +501,14 @@ def main(args):
     input_file = os.path.basename(args.input)
     input_file_array = os.path.splitext(input_file)
     input_file_noext = input_file_array[0]
+    
+    output_dir = "output"
+    os.makedirs(output_dir, exist_ok=True)
+
     if args.output:
         output_file = args.output
     else:
-        output_file = "{}.vtkhdf".format(input_file_noext)
+        output_file = os.path.join(output_dir, f"{input_file_noext}.vtkhdf")
     convert(args.input, output_file)
 
 
