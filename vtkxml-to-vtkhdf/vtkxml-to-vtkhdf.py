@@ -14,6 +14,42 @@ from vtkmodules.vtkCommonExecutionModel import vtkStreamingDemandDrivenPipeline
 from vtkmodules.vtkCommonCore import VTK_IMAGE_DATA, VTK_UNSTRUCTURED_GRID
 
 # ------------------------------------------------------------------------------
+def h5_dset_kwargs(shape, dtype, maxshape=None):
+    """
+    Return robust HDF5 dataset kwargs for smaller vtkhdf:
+    - gzip compression (portable)
+    - shuffle filter (improves compression for numeric arrays)
+    - chunking (required for compression and for resizable datasets)
+    """
+    # --- choose chunk shape ---
+    # HDF5 chunks are best when chunk bytes ~ 1–8 MB (rule of thumb).
+    # We'll chunk along the first dimension.
+    if len(shape) == 1:
+        n0 = shape[0]
+        c0 = min(max(1, n0), 1_000_000)   # cap to avoid tiny chunks
+        chunks = (c0,)
+    else:
+        n0 = shape[0]
+        # pick rows per chunk so that chunk ~ a few MB
+        # rough bytes per row:
+        itemsize = getattr(dtype, "itemsize", None) or 8
+        row_bytes = itemsize
+        for s in shape[1:]:
+            row_bytes *= s
+        target = 4 * 1024 * 1024  # 4MB
+        c0 = max(1, min(n0, target // max(row_bytes, 1)))
+        chunks = (c0,) + tuple(shape[1:])
+
+    return dict(
+        maxshape=maxshape,
+        chunks=chunks,
+        compression="gzip", 
+        compression_opts=4,  # 1 faster、9 smaller, 4 is balance
+        shuffle=True,
+    )
+
+
+# ------------------------------------------------------------------------------
 def create_dataset(name, anp, group, number_of_pieces):
     """
     Create a HDF dataset 'name' inside 'group' from numpy array 'anp'.
@@ -24,8 +60,10 @@ def create_dataset(name, anp, group, number_of_pieces):
         maxshape = (None,) + shape[1:]
     else:
         maxshape = shape
-    dset = group.create_dataset(
-        name, shape, anp.dtype, maxshape=maxshape)
+    # dset = group.create_dataset(
+    #     name, shape, anp.dtype, maxshape=maxshape)
+    kwargs = h5_dset_kwargs(shape, anp.dtype, maxshape=maxshape)
+    dset = group.create_dataset(name, shape=shape, dtype=anp.dtype, **kwargs)
     dset[0:] = anp
     return dset
 

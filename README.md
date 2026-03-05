@@ -1,5 +1,15 @@
 # VTKHDF-scripts
 
+## 🔧 Custom Modifications
+
+- Add the `h5_dset_kwargs` function in `vtkxml-to-vtkhdf.py` to compress the vtkhdf file. The chunk size will calculate automatically based on the data shape.
+- Run `vtkxml2vtkhdf.sh` to convert files.
+
+---
+
+> [!NOTE]
+> Below is the original content.
+
 Repository used to store h5py scripts to generate VTKHDF file format based on the [file format specification](https://docs.vtk.org/en/latest/vtk_file_formats/vtkhdf_file_format/vtkhdf_specifications.html).
 
 ## Tutorial
