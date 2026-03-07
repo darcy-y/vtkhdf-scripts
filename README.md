@@ -6,6 +6,8 @@
 - Run `vtkxml2vtkhdf.sh` to convert files.
 - Automatically put vtkhdf file in `output/` dir.
 
+- Add feature to convert time series data.
+
 ---
 
 > [!NOTE]
