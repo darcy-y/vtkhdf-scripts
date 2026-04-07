@@ -7,6 +7,11 @@
 - Automatically put vtkhdf file in `output/` dir.
 
 - Add feature to convert time series data.
+    - functions in `vtu_series_to_vtkhdf.py`.
+    - use `batch_convert_vtkhdf.sh` to convert batch fiels.
+
+- use `add_json_to_hdf.py` to add json in case dir to vtkhdf
+    - also put it in `batch_convert_vtkhdf.sh`
 
 ---
 

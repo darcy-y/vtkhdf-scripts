@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+# @ Author      :  darcy-y
+# @ Time        :  2026-04-07 14:07:47
+
+"""
+Usage: python3 vtu_series_to_vtkhdf.py --input "input/case_000001/dump/particle/dump_*.vtu" --output output/dump.vtkhdf --dt 3.5e-06
+
+
+For dump interval in physical time instead of relying on filename parsing:
+
+    python3 vtu_series_to_vtkhdf.py --input "input/case_000001/dump/particle/dump_*.vtu" --output output/dump.vtkhdf --dt 0.1 --t0 0.1 --time-mode index
+
+"""
 
 from __future__ import annotations
 
@@ -29,7 +40,7 @@ TIME_DTYPE = np.float64
 # ---------------------------------------------------------------------
 @dataclass
 class H5Config:
-    compression: str | None = "gzip"   # None, "gzip", "lzf"
+    compression: str | None = "gzip"  # None, "gzip", "lzf"
     compression_level: int | None = 4  # only used for gzip
     chunk_1d: int = 8192
     chunk_2d_rows: int = 4096
@@ -44,11 +55,7 @@ def natural_key(text: str) -> List[Any]:
 
 def infer_step_from_filename(path: str) -> int | None:
     name = os.path.basename(path)
-
-    # 去掉扩展名，只在文件名主体里找整数
     stem = os.path.splitext(name)[0]
-
-    # 提取所有整数，取最后一个
     matches = re.findall(r"\d+", stem)
     if not matches:
         return None
@@ -78,7 +85,9 @@ def create_dataset(
     return group.create_dataset(name, **kwargs)
 
 
-def make_1d(group: h5py.Group, name: str, dtype: np.dtype | type, cfg: H5Config) -> h5py.Dataset:
+def make_1d(
+    group: h5py.Group, name: str, dtype: np.dtype | type, cfg: H5Config
+) -> h5py.Dataset:
     return create_dataset(
         group=group,
         name=name,
@@ -124,8 +133,7 @@ def append_2d(dset: h5py.Dataset, arr: np.ndarray) -> None:
         raise ValueError(f"{dset.name} expects 2D input, got shape={arr.shape}")
     if arr.shape[1] != dset.shape[1]:
         raise ValueError(
-            f"{dset.name} second dimension mismatch: "
-            f"{arr.shape[1]} vs {dset.shape[1]}"
+            f"{dset.name} second dimension mismatch: {arr.shape[1]} vs {dset.shape[1]}"
         )
     old = dset.shape[0]
     new = old + arr.shape[0]
@@ -139,12 +147,11 @@ def append_row_2d(dset: h5py.Dataset, row: np.ndarray | List[Any]) -> None:
         raise ValueError(f"{dset.name} expects shape (1, n), got {row.shape}")
     if row.shape[1] != dset.shape[1]:
         raise ValueError(
-            f"{dset.name} second dimension mismatch: "
-            f"{row.shape[1]} vs {dset.shape[1]}"
+            f"{dset.name} second dimension mismatch: {row.shape[1]} vs {dset.shape[1]}"
         )
     old = dset.shape[0]
     dset.resize((old + 1, dset.shape[1]))
-    dset[old:old + 1, :] = row
+    dset[old : old + 1, :] = row
 
 
 # ---------------------------------------------------------------------
@@ -240,7 +247,7 @@ def read_vtu(filename: str) -> Dict[str, Any]:
     return {
         "points": points,
         "connectivity": connectivity,
-        "offsets": offsets,   # length = ncells + 1, starting from 0
+        "offsets": offsets,  # length = ncells + 1, starting from 0
         "types": types_,
         "point_data": point_data,
         "cell_data": cell_data,
@@ -253,7 +260,9 @@ def read_vtu(filename: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------
-def validate_schema(reference: Dict[str, Any], current: Dict[str, Any], filename: str) -> None:
+def validate_schema(
+    reference: Dict[str, Any], current: Dict[str, Any], filename: str
+) -> None:
     ref_pd = set(reference["point_data"].keys())
     cur_pd = set(current["point_data"].keys())
     ref_cd = set(reference["cell_data"].keys())
@@ -307,7 +316,9 @@ def validate_schema(reference: Dict[str, Any], current: Dict[str, Any], filename
             )
 
     if current["types"].dtype != np.uint8:
-        raise ValueError(f"Types dtype must be uint8 in {filename}, got {current['types'].dtype}")
+        raise ValueError(
+            f"Types dtype must be uint8 in {filename}, got {current['types'].dtype}"
+        )
 
     if current["offsets"].shape[0] != current["ncells"] + 1:
         raise ValueError(
@@ -331,7 +342,9 @@ def meshes_equal(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
 # ---------------------------------------------------------------------
 # VTKHDF initialization
 # ---------------------------------------------------------------------
-def init_vtkhdf_unstructured(root: h5py.Group, sample: Dict[str, Any], cfg: H5Config) -> None:
+def init_vtkhdf_unstructured(
+    root: h5py.Group, sample: Dict[str, Any], cfg: H5Config
+) -> None:
     root.attrs["Version"] = np.array([2, 1], dtype=np.int64)
     root.attrs["Type"] = np.bytes_("UnstructuredGrid")
 
@@ -425,10 +438,10 @@ def append_frame_data(root: h5py.Group, frame: Dict[str, Any]) -> Tuple[int, int
         )
 
     point_offset = root["Points"].shape[0]
-    # cell_offset = root["Types"].shape[0]
+    cell_offset = root["Types"].shape[0]
     # cell_offset = root["Offsets"].shape[0]
-    cell_offset = point_offset
-    
+    # cell_offset = point_offset
+
     conn_offset = root["Connectivity"].shape[0]
 
     append_1d(root["NumberOfPoints"], [frame["npoints"]])
@@ -498,7 +511,9 @@ def append_step(
                 elif arr.ndim == 2:
                     append_2d(root["PointData"][name], arr)
                 else:
-                    raise ValueError(f"Unsupported PointData ndim for '{name}': {arr.ndim}")
+                    raise ValueError(
+                        f"Unsupported PointData ndim for '{name}': {arr.ndim}"
+                    )
 
             for name, arr in frame["cell_data"].items():
                 arr = np.asarray(arr)
@@ -507,7 +522,9 @@ def append_step(
                 elif arr.ndim == 2:
                     append_2d(root["CellData"][name], arr)
                 else:
-                    raise ValueError(f"Unsupported CellData ndim for '{name}': {arr.ndim}")
+                    raise ValueError(
+                        f"Unsupported CellData ndim for '{name}': {arr.ndim}"
+                    )
 
         point_offset, cell_offset, conn_offset = first_mesh_offsets
     else:
@@ -519,7 +536,9 @@ def append_step(
     append_1d(steps["PointOffsets"], [point_offset])
 
     append_row_2d(steps["CellOffsets"], np.array([[cell_offset]], dtype=ID_DTYPE))
-    append_row_2d(steps["ConnectivityIdOffsets"], np.array([[conn_offset]], dtype=ID_DTYPE))
+    append_row_2d(
+        steps["ConnectivityIdOffsets"], np.array([[conn_offset]], dtype=ID_DTYPE)
+    )
 
     for name, off in point_data_offsets.items():
         append_1d(steps["PointDataOffsets"][name], [off])
@@ -597,7 +616,9 @@ def vtu_series_to_vtkhdf(
             cur = read_vtu(f)
             validate_schema(sample, cur, f)
             if not meshes_equal(sample, cur):
-                raise ValueError(f"--static-mesh is enabled, but mesh differs in file: {f}")
+                raise ValueError(
+                    f"--static-mesh is enabled, but mesh differs in file: {f}"
+                )
 
     with h5py.File(output_file, "w") as h5f:
         root = h5f.create_group("VTKHDF", track_order=True)
