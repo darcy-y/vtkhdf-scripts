@@ -9,6 +9,8 @@ import json
 import h5py
 from pathlib import Path
 
+TOPGROUP_NAME="CONFIG"
+JSON_NAME="json" # store full json in this dataset 
 
 def _to_attr_value(v):
     if v is None:
@@ -39,14 +41,14 @@ def add_info_json_to_vtkhdf(vtkhdf_path: str, json_path: str):
     raw_json = json.dumps(obj, ensure_ascii=False, indent=2)
 
     with h5py.File(vtkhdf_path, "a") as h5f:
-        if "INFO" in h5f:
-            del h5f["INFO"]
+        if TOPGROUP_NAME in h5f:
+            del h5f[TOPGROUP_NAME]
 
-        info = h5f.create_group("INFO")
+        info = h5f.create_group(TOPGROUP_NAME)
 
         # store full raw json text
         dt = h5py.string_dtype(encoding="utf-8")
-        info.create_dataset("raw_json", data=raw_json, dtype=dt)
+        info.create_dataset(JSON_NAME, data=raw_json, dtype=dt)
 
         # mirror json hierarchy
         if isinstance(obj, dict):

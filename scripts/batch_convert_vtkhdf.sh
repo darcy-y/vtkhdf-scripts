@@ -8,7 +8,11 @@ set -euo pipefail
 BASE_INPUT_DIR="${1:-input}"
 BASE_OUTPUT_DIR="${2:-output}"
 
-CONVERTER="vtu_series_to_vtkhdf.py"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+CONVERTER="$REPO_ROOT/converters/vtu_series_to_vtkhdf.py"
+ADD_JSON="$REPO_ROOT/tools/add_json_to_hdf.py"
 
 DT="${DT:-0.1}"
 T0="${T0:-0.1}"
@@ -36,7 +40,7 @@ for case_dir in "$BASE_INPUT_DIR"/case_*; do
     echo "[RUN ] $case_name -> $output_file"
 
     # do convertion
-    python3 $CONVERTER \
+    python3 "$CONVERTER" \
         --input "$dump_pattern" \
         --output "$output_file" \
         --dt "$DT" \
@@ -44,7 +48,7 @@ for case_dir in "$BASE_INPUT_DIR"/case_*; do
         --time-mode "$TIME_MODE"
 
     # add json to vtkhdf
-    python3 add_json_to_hdf.py --vtkhdf-path "$output_file" --json-path "$case_dir/${case_name}.json"
+    python3 "$ADD_JSON" --vtkhdf-path "$output_file" --json-path "$case_dir/${case_name}.json"
 
     echo "[DONE] $case_name"
 done

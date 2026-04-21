@@ -3,12 +3,12 @@
 # @ Time        :  2026-04-07 14:07:47
 
 """
-Usage: python3 vtu_series_to_vtkhdf.py --input "input/case_000001/dump/particle/dump_*.vtu" --output output/dump.vtkhdf --dt 3.5e-06
+Usage: python3 converters/vtu_series_to_vtkhdf.py --input "input/case_000001/dump/particle/dump_*.vtu" --output output/dump.vtkhdf --dt 3.5e-06
 
 
 For dump interval in physical time instead of relying on filename parsing:
 
-    python3 vtu_series_to_vtkhdf.py --input "input/case_000001/dump/particle/dump_*.vtu" --output output/dump.vtkhdf --dt 0.1 --t0 0.1 --time-mode index
+    python3 converters/vtu_series_to_vtkhdf.py --input "input/case_000001/dump/particle/dump_*.vtu" --output output/dump.vtkhdf --dt 0.1 --t0 0.1 --time-mode index
 
 """
 
@@ -18,8 +18,9 @@ import argparse
 import glob
 import os
 import re
+import warnings
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Any
+from typing import Any, Callable, Dict, List, Tuple
 
 import h5py
 import numpy as np
@@ -155,18 +156,28 @@ def append_row_2d(dset: h5py.Dataset, row: np.ndarray | List[Any]) -> None:
 
 
 # ---------------------------------------------------------------------
-# VTU reading
+# VTK unstructured-grid reading
 # ---------------------------------------------------------------------
-def read_vtu(filename: str) -> Dict[str, Any]:
-    reader = vtkXMLUnstructuredGridReader()
-    reader.SetFileName(filename)
-    reader.Update()
-    ug = reader.GetOutput()
+def get_cell_types_array(ug: Any) -> np.ndarray:
+    try:
+        vtk_types = ug.GetCellTypes()
+    except TypeError:
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r"Call to deprecated method GetCellTypesArray\.",
+                category=DeprecationWarning,
+            )
+            vtk_types = ug.GetCellTypesArray()
 
+    return np.asarray(vtk_to_numpy(vtk_types))
+
+
+def read_unstructured_grid(ug: Any, filename: str) -> Dict[str, Any]:
     if ug is None:
-        raise RuntimeError(f"Failed to read VTU: {filename}")
+        raise RuntimeError(f"Failed to read unstructured grid: {filename}")
     if ug.GetPoints() is None:
-        raise RuntimeError(f"VTU has no points: {filename}")
+        raise RuntimeError(f"Unstructured grid has no points: {filename}")
 
     # Geometry
     points = np.asarray(vtk_to_numpy(ug.GetPoints().GetData()))
@@ -177,7 +188,7 @@ def read_vtu(filename: str) -> Dict[str, Any]:
     cells = ug.GetCells()
     connectivity = np.asarray(vtk_to_numpy(cells.GetConnectivityArray()))
     raw_offsets = np.asarray(vtk_to_numpy(cells.GetOffsetsArray()))
-    types_ = np.asarray(vtk_to_numpy(ug.GetCellTypesArray()))
+    types_ = get_cell_types_array(ug)
 
     if types_.ndim != 1:
         raise ValueError(f"Cell types must be 1D, got shape={types_.shape}")
@@ -255,6 +266,13 @@ def read_vtu(filename: str) -> Dict[str, Any]:
         "ncells": ncells,
         "nconn": int(connectivity.shape[0]),
     }
+
+
+def read_vtu(filename: str) -> Dict[str, Any]:
+    reader = vtkXMLUnstructuredGridReader()
+    reader.SetFileName(filename)
+    reader.Update()
+    return read_unstructured_grid(reader.GetOutput(), filename)
 
 
 # ---------------------------------------------------------------------
@@ -588,10 +606,11 @@ def build_times(
     return t0 + steps.astype(TIME_DTYPE) * dt
 
 
-def vtu_series_to_vtkhdf(
+def unstructured_series_to_vtkhdf(
     input_pattern: str,
     output_file: str,
     cfg: H5Config,
+    read_frame: Callable[[str], Dict[str, Any]],
     time_mode: str = "auto",
     static_mesh: bool = False,
     dt: float = 1.0,
@@ -600,7 +619,7 @@ def vtu_series_to_vtkhdf(
     files = collect_files(input_pattern)
     times = build_times(files, time_mode, dt=dt, t0=t0)
 
-    sample = read_vtu(files[0])
+    sample = read_frame(files[0])
 
     # Basic sanity checks
     if sample["types"].dtype != np.uint8:
@@ -613,7 +632,7 @@ def vtu_series_to_vtkhdf(
 
     if static_mesh:
         for f in files[1:]:
-            cur = read_vtu(f)
+            cur = read_frame(f)
             validate_schema(sample, cur, f)
             if not meshes_equal(sample, cur):
                 raise ValueError(
@@ -627,7 +646,7 @@ def vtu_series_to_vtkhdf(
         first_mesh_offsets = None
 
         for t, f in zip(times, files):
-            frame = read_vtu(f)
+            frame = read_frame(f)
             validate_schema(sample, frame, f)
 
             first_mesh_offsets = append_step(
@@ -666,6 +685,27 @@ def vtu_series_to_vtkhdf(
                 )
 
     print(f"\nDone: {output_file}")
+
+
+def vtu_series_to_vtkhdf(
+    input_pattern: str,
+    output_file: str,
+    cfg: H5Config,
+    time_mode: str = "auto",
+    static_mesh: bool = False,
+    dt: float = 1.0,
+    t0: float = 0.0,
+) -> None:
+    unstructured_series_to_vtkhdf(
+        input_pattern=input_pattern,
+        output_file=output_file,
+        cfg=cfg,
+        read_frame=read_vtu,
+        time_mode=time_mode,
+        static_mesh=static_mesh,
+        dt=dt,
+        t0=t0,
+    )
 
 
 # ---------------------------------------------------------------------
